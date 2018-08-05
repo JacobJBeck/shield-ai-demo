@@ -10,45 +10,55 @@
 #include "madara/knowledge/KnowledgeBase.h"
 #include "madara/utility/Utility.h"
 
-/**
- * Default settings for our Network Transport. We put them
- * outside of the main function to allow for future expansion
- * with an argument parsing function.
- **/
-std::string host ("");
-const std::string multicast_address ("239.255.0.1:4150");
-madara::transport::TransportSettings settings;
+const int MAX_HOSTS = 10;
 
 int main (int argc, char * argv[])
 {
-  // Setup a multicast transport with the settings mentioned above.
-  settings.type = madara::transport::MULTICAST;
-  settings.hosts.resize (1);
-  settings.hosts[0] = multicast_address;
+  // Create knowledge base
+  madara::knowledge::KnowledgeBase knowledge;
   
-  // Check for command line argument that changes the domain
-  if (argc == 3)
-  {
-    // change the domain from its default to the one provided by the user
-    settings.write_domain = argv[2];
-  }
-
-  // Create the knowledge base with the transport settings set for multicast
-  madara::knowledge::KnowledgeBase knowledge (host, settings);
-  
-  // Check command line arguments for a non-zero id
+  // Check command line arguments for id
   if (argc >= 2)
   {
     // save the first argument into an integer
     madara::knowledge::KnowledgeRecord::Integer new_id;
-    std::stringstream buffer (argv[1]);
+    std::istringstream buffer (argv[1]);
     buffer >> new_id;
+    
+    // Setup TCP-based ZMQ transport
+    madara::transport::QoSTransportSettings settings;
+    settings.type = madara::transport::ZMQ;
+    
+    // Our host name needs to come first
+    std::ostringstream hostname;
+    hostname << "tcp://127.0.0.1:" << (30000 + new_id);
+    settings.hosts.push_back(hostname.str () );
+    hostname.str ("");
+    
+    // Add the rest of the agents
+    for (int i = 0; i < MAX_HOSTS; i++)
+    {
+      if (i == new_id)
+        continue;
+      
+      hostname << "tcp://127.0.0.1:" << (30000 + i);
+      settings.hosts.push_back(hostname.str () );
+      hostname.str ("");
+    }
+
+    // Apply transport settings to knowledge base
+    knowledge.attach_transport (std::to_string (new_id), settings);
 
     /**
      * Update the knowledge base to include our .id. All variables are zero
      * by default in the knowledge base.
      **/
     knowledge.set (".id", new_id);
+  }
+  else
+  {
+    knowledge.evaluate ("#print ('ID argument is required\n') ");
+    return 1;
   }
   
   
